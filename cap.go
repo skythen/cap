@@ -1,4 +1,4 @@
-// Package cap implements the parsing of Java Card converted applets (CAP) and their transformation into an installable form.
+// Package cap implements the parsing of Java Card converted applets (CAP) and providing them in an installable format.
 package cap
 
 import (
@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -119,20 +118,11 @@ type CAP struct {
 	components       map[int]*Component // components is a list of components contained in the cap-file.
 }
 
-// Parse parses a '.cap' file and its cap components and returns a CAP.
-func Parse(file *os.File) (*CAP, error) {
-	if !strings.HasSuffix(file.Name(), ".cap") {
-		return nil, errors.New("file does not have suffix '.cap'")
-	}
-
-	fi, err := file.Stat()
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to retrieve file information")
-	}
-
-	zReader, err := zip.NewReader(file, fi.Size())
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to create zip reader from file")
+// Parse takes a pointer to zip.Reader for a '.cap' file, reads its contents and parses its
+// cap components and returns a CAP.
+func Parse(reader *zip.Reader) (*CAP, error) {
+	if reader == nil {
+		return nil, errors.New("cap.Parse - nil pointer to zip.Reader")
 	}
 
 	var (
@@ -146,33 +136,33 @@ func Parse(file *os.File) (*CAP, error) {
 	components := make(map[int]*Component, 12)
 
 	// iterate over files in zip and look for cap-Files
-	for _, f := range zReader.File {
+	for _, f := range reader.File {
 		if strings.HasSuffix(f.Name, ".cap") && len(components) < 12 {
 			content, err := readZipFileContentToBytes(f)
 			if err != nil {
-				return nil, errors.Wrap(err, "unable to read file contents of "+f.Name)
+				return nil, errors.Wrap(err, "cap.Parse - unable to read file contents of "+f.Name)
 			}
 
 			component, err := parseComponent(content)
 			if err != nil {
-				return nil, errors.Wrap(err, "invalid component in "+f.Name)
+				return nil, errors.Wrap(err, "cap.Parse - invalid component in "+f.Name)
 			}
 
 			switch component.Tag {
 			case ComponentHeader:
 				header, err = parseHeaderInfo(component.Info)
 				if err != nil {
-					return nil, errors.Wrap(err, "invalid header")
+					return nil, errors.Wrap(err, "cap.Parse - invalid header")
 				}
 			case ComponentApplet:
 				applets, err = parseAppletInfo(component.Info)
 				if err != nil {
-					return nil, errors.Wrap(err, "invalid applet")
+					return nil, errors.Wrap(err, "cap.Parse -invalid applet")
 				}
 			case ComponentImport:
 				imports, err = parseImportInfo(component.Info)
 				if err != nil {
-					return nil, errors.Wrap(err, "invalid import")
+					return nil, errors.Wrap(err, "cap.Parse - invalid import")
 				}
 				jcVersion = inferJCVersion(imports)
 				gpVersion = findGPApiVersion(imports)
@@ -180,7 +170,7 @@ func Parse(file *os.File) (*CAP, error) {
 
 			tag, ok := components[int(component.Tag)]
 			if ok {
-				return nil, errors.Errorf("component with tag %d is contained more than once", tag)
+				return nil, errors.Errorf("cap.Parse - component with tag %d is contained more than once", tag)
 			}
 
 			components[int(component.Tag)] = component
