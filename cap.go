@@ -68,7 +68,7 @@ func parseComponent(b []byte) (*Component, error) {
 		return nil, errors.New("component does not contain tag (1B) and size (2B)")
 	}
 
-	if b[0] > 12 {
+	if b[0] < 1 || b[0] > 12 {
 		return nil, errors.New("invalid value for tag, must be in range 1-12")
 	}
 
@@ -175,6 +175,10 @@ func Parse(reader *zip.Reader) (*CAP, error) {
 
 			components[int(component.Tag)] = component
 		}
+	}
+
+	if header == nil {
+		return nil, errors.New("cap.Parse - missing component header")
 	}
 
 	return &CAP{
